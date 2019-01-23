@@ -1,7 +1,11 @@
 # SegmentedCircleView
 SegmentedCircleView for xamarin forms
 
-![img](https://github.com/AndreiMisiukevich/SegmentedCircleView/blob/master/1.png?raw=true)
+<html>
+<p align="center">
+  <img src="https://github.com/AndreiMisiukevich/SegmentedCircleView/blob/master/1.png?raw=true" width="200">
+</p>
+</html>
 
 ## Easy for use
 - **Add and setup FFImageLoading plugin with SVG support!**
