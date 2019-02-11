@@ -4,13 +4,12 @@ using System.Text;
 using System.Collections.Generic;
 using System.Linq;
 using Xamarin.Forms;
-using SkiaSharp.Views.Forms;
 using System.IO;
 using SkiaSharp;
 
 namespace Segmented
 {
-    public class PieChartView : SKCanvasView
+    public class PieChartView : Image
     {
         private const string SvgMainImagePattern =
 @"<?xml version=""1.0"" encoding=""utf-8""?>
@@ -28,7 +27,7 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
 
         private const double Degree360 = 360;
         private const double Degree180 = 180;
-        private const double Degree90 = 180;
+        private const double Degree90 = 90;
 
         public static readonly BindableProperty SegmentsSourceProperty = BindableProperty.Create(nameof(SegmentsSource), typeof(List<SegmentInfo>), typeof(PieChartView), null);
 
@@ -39,8 +38,6 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
         public static readonly BindableProperty SeparatorColorProperty = BindableProperty.Create(nameof(SeparatorColor), typeof(Color), typeof(PieChartView), Color.White);
 
         private double _lastDrawSize;
-
-        private SkiaSharp.Extended.Svg.SKSvg _svgHolder;
 
         public List<SegmentInfo> SegmentsSource
         {
@@ -90,34 +87,10 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
             }
         }
 
-        protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
-        {
-            base.OnPaintSurface(e);
-            var surface = e.Surface;
-            var canvas = surface.Canvas;
-
-            var width = e.Info.Width;
-            var height = e.Info.Height;
-
-            canvas.Clear(SKColors.White);
-
-            if (_svgHolder == null)
-            {
-                return;
-            }
-
-            var canvasMin = Min(width, height);
-            var svgMax = Max(_svgHolder.Picture.CullRect.Width, _svgHolder.Picture.CullRect.Height);
-            var scale = canvasMin / svgMax;
-            var matrix = SKMatrix.MakeScale(scale, scale);
-
-            canvas.DrawPicture(_svgHolder.Picture, ref matrix);
-        }
-
         private void Draw(bool checkLastDrawSize)
         {
-            var width = WidthRequest > 0 
-                ? WidthRequest 
+            var width = WidthRequest > 0
+                ? WidthRequest
                 : Width;
 
             var height = HeightRequest > 0
@@ -129,11 +102,12 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
                 return;
             }
 
-            var halfSize = ((int)Min(Width, Height)) / 2;
-            if (checkLastDrawSize && Abs(_lastDrawSize - halfSize) < double.Epsilon)
+            var halfSize = ((int)Min(width, height)) / 2;
+            if (checkLastDrawSize && Abs(_lastDrawSize - halfSize) <= 1e-10)
             {
                 return;
             }
+
             _lastDrawSize = halfSize;
 
             var itemsCount = SegmentsSource.Count;
@@ -193,16 +167,36 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
 
             var fullSvg = string.Format(SvgMainImagePattern, halfSize * 2, segmentsBuilder, centerCiclerSvg);
 
-
-            _svgHolder = new SkiaSharp.Extended.Svg.SKSvg();
+            var svgHolder = new SkiaSharp.Extended.Svg.SKSvg();
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(fullSvg)))
             {
-#pragma warning disable CS1701 // Assuming assembly reference matches identity
-                _svgHolder.Load(stream);
-#pragma warning restore CS1701 // Assuming assembly reference matches identity
+#pragma warning disable CS1701
+                svgHolder.Load(stream);
+#pragma warning restore CS1701
             }
 
-            InvalidateSurface();
+            var canvasSize = svgHolder.CanvasSize;
+            var cullRect = svgHolder.Picture.CullRect;
+
+            using (var bitmap = new SKBitmap((int)canvasSize.Width, (int)canvasSize.Height))
+            using (var canvas = new SKCanvas(bitmap))
+            {
+                var canvasMin = Min(canvasSize.Width, canvasSize.Height);
+                var svgMax = Max(cullRect.Width, cullRect.Height);
+                var scale = canvasMin / svgMax;
+                var matrix = SKMatrix.MakeScale(scale, scale);
+
+                canvas.Clear(SKColor.Empty);
+                canvas.DrawPicture(svgHolder.Picture, ref matrix);
+                canvas.Flush();
+                canvas.Save();
+
+                using (var image = SKImage.FromBitmap(bitmap))
+                {
+                    var data = image.Encode(SKEncodedImageFormat.Png, int.MaxValue);
+                    Source = ImageSource.FromStream(data.AsStream);
+                }
+            }
         }
 
         private string GetHexColor(Color color)
