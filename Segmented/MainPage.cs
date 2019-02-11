@@ -12,7 +12,7 @@ namespace Segmented
                 BackgroundColor = Color.White,
                 Children =
                 {
-                    new SegmentedCircleView
+                    new PieChartView
                     {
                         HorizontalOptions = LayoutOptions.CenterAndExpand,
                         VerticalOptions = LayoutOptions.CenterAndExpand,
@@ -33,7 +33,7 @@ namespace Segmented
                             new SegmentInfo
                             {
                                 Percentage = 0.075,
-                                Color = Color.Red
+                                Color = Color.Gold
                             },
                             new SegmentInfo
                             {

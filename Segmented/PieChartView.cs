@@ -1,14 +1,16 @@
 ﻿using System.Runtime.CompilerServices;
-using FFImageLoading.Svg.Forms;
 using static System.Math;
 using System.Text;
 using System.Collections.Generic;
 using System.Linq;
 using Xamarin.Forms;
+using SkiaSharp.Views.Forms;
+using System.IO;
+using SkiaSharp;
 
 namespace Segmented
 {
-    public class SegmentedCircleView : SvgCachedImage
+    public class PieChartView : SKCanvasView
     {
         private const string SvgMainImagePattern =
 @"<?xml version=""1.0"" encoding=""utf-8""?>
@@ -28,15 +30,17 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
         private const double Degree180 = 180;
         private const double Degree90 = 180;
 
-        public static readonly BindableProperty SegmentsSourceProperty = BindableProperty.Create(nameof(SegmentsSource), typeof(List<SegmentInfo>), typeof(SegmentedCircleView), null);
+        public static readonly BindableProperty SegmentsSourceProperty = BindableProperty.Create(nameof(SegmentsSource), typeof(List<SegmentInfo>), typeof(PieChartView), null);
 
-        public static readonly BindableProperty SeparatorPercentageProperty = BindableProperty.Create(nameof(SeparatorPercentage), typeof(double), typeof(SegmentedCircleView), 0.005);
+        public static readonly BindableProperty SeparatorPercentageProperty = BindableProperty.Create(nameof(SeparatorPercentage), typeof(double), typeof(PieChartView), 0.005);
 
-        public static readonly BindableProperty CenterCirclePercentageProperty = BindableProperty.Create(nameof(CenterCirclePercentage), typeof(double), typeof(SegmentedCircleView), 0.5);
+        public static readonly BindableProperty CenterCirclePercentageProperty = BindableProperty.Create(nameof(CenterCirclePercentage), typeof(double), typeof(PieChartView), 0.5);
 
-        public static readonly BindableProperty SeparatorColorProperty = BindableProperty.Create(nameof(SeparatorColor), typeof(Color), typeof(SegmentedCircleView), Color.White);
+        public static readonly BindableProperty SeparatorColorProperty = BindableProperty.Create(nameof(SeparatorColor), typeof(Color), typeof(PieChartView), Color.White);
 
         private double _lastDrawSize;
+
+        private SkiaSharp.Extended.Svg.SKSvg _svgHolder;
 
         public List<SegmentInfo> SegmentsSource
         {
@@ -84,6 +88,30 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
                 Draw(false);
                 return;
             }
+        }
+
+        protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
+        {
+            base.OnPaintSurface(e);
+            var surface = e.Surface;
+            var canvas = surface.Canvas;
+
+            var width = e.Info.Width;
+            var height = e.Info.Height;
+
+            canvas.Clear(SKColors.White);
+
+            if (_svgHolder == null)
+            {
+                return;
+            }
+
+            var canvasMin = Min(width, height);
+            var svgMax = Max(_svgHolder.Picture.CullRect.Width, _svgHolder.Picture.CullRect.Height);
+            var scale = canvasMin / svgMax;
+            var matrix = SKMatrix.MakeScale(scale, scale);
+
+            canvas.DrawPicture(_svgHolder.Picture, ref matrix);
         }
 
         private void Draw(bool checkLastDrawSize)
@@ -165,7 +193,16 @@ width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new
 
             var fullSvg = string.Format(SvgMainImagePattern, halfSize * 2, segmentsBuilder, centerCiclerSvg);
 
-            Source = SvgImageSource.FromSvgString(fullSvg);
+
+            _svgHolder = new SkiaSharp.Extended.Svg.SKSvg();
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(fullSvg)))
+            {
+#pragma warning disable CS1701 // Assuming assembly reference matches identity
+                _svgHolder.Load(stream);
+#pragma warning restore CS1701 // Assuming assembly reference matches identity
+            }
+
+            InvalidateSurface();
         }
 
         private string GetHexColor(Color color)
