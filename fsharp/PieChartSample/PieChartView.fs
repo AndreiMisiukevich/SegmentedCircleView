@@ -31,15 +31,14 @@ type PieChartView () =
     let mutable lastDrawableSize : int = 0 
 
     let BuildColorPart(part : float) : int =
-        let p = int part
-        p * 255
+        int(part * 255.)
 
     let GetHexColor(color : Color) : string =
         let red =  BuildColorPart color.R
         let green = BuildColorPart color.G
         let blue = BuildColorPart color.B
         let alpha = BuildColorPart color.A
-        String.Format("{0:X2}{1:X2}{2:X2}{3:X2}", red, green, blue, alpha)
+        String.Format("{0:X2}{1:X2}{2:X2}{3:X2}", alpha, red, green, blue)
        
     member this.SegmentsSource
         with get () = this.GetValue SegmentsSourceProperty :?> seq<SegmentInfo>
