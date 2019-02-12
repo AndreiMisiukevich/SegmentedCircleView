@@ -103,12 +103,6 @@
     <Reference Include="SkiaSharp.Extended.Svg">
       <HintPath>..\packages\SkiaSharp.Svg.1.60.0\lib\netstandard2.0\SkiaSharp.Extended.Svg.dll</HintPath>
     </Reference>
-    <Reference Include="SkiaSharp.Views.iOS">
-      <HintPath>..\packages\SkiaSharp.Views.1.68.0\lib\Xamarin.iOS\SkiaSharp.Views.iOS.dll</HintPath>
-    </Reference>
-    <Reference Include="SkiaSharp.Views.Forms">
-      <HintPath>..\packages\SkiaSharp.Views.Forms.1.68.0\lib\Xamarin.iOS\SkiaSharp.Views.Forms.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Contents.json" />
