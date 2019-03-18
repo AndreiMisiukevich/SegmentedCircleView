@@ -10,9 +10,9 @@ open Xamarin.Forms.Platform.iOS
 type AppDelegate () =
     inherit FormsApplicationDelegate ()
 
-    override this.FinishedLaunching (app, options) =
+    override self.FinishedLaunching (app, options) =
         Forms.Init()
-        this.LoadApplication (new PieChartSample.App())
+        self.LoadApplication (new PieChartSample.App())
         base.FinishedLaunching(app, options)
 
 module Main =

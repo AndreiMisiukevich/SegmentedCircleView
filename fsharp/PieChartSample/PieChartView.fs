@@ -1,140 +1,268 @@
 ﻿namespace PieChartSample
 
 open System.Text
-open System.Collections.Generic
 open System.Linq
 open Xamarin.Forms
 open System.IO
 open SkiaSharp
 open System
 
-type PieChartView () =
+type SegmentInfo = 
+    {
+        Color: Color
+        Percentage: float
+    }
+
+type DonutChartView () =
     inherit Image () 
 
-    let SvgMainImagePattern = @"<?xml version=""1.0"" encoding=""utf-8""?>
+    let svgMainImagePattern = @"<?xml version=""1.0"" encoding=""utf-8""?>
     <svg version=""1.1"" id=""Layer_1"" xmlns=""http://www.w3.org/2000/svg"" xmlns:xlink=""http://www.w3.org/1999/xlink"" x=""0px"" y=""0px""
     width=""{0}px"" height=""{0}px"" viewBox=""0 0 {0} {0}"" enable-background=""new 0 0 {0} {0}"" xml:space=""preserve"">
     {1}
     {2}
     </svg>"
-    let SvgSegmentPatter = @"<path fill=""{5}"" d=""M{0},{0} L{0},0 A{0},{0} 1 {4},1 {1}, {2} z"" transform=""rotate({3}, {0}, {0})"" />"
-    let SvgCenterCircle = @"<circle cx=""{0}"" cy=""{0}"" r=""{1}"" fill=""{2}""/>"
-    let Degree360 = 360.
-    let Degree180 = 180.
-    let Degree90 = 90.
+    let svgCirclePattern = @"<circle cx=""{0}"" cy=""{0}"" r=""{1}"" fill=""{2}""/>"
+    let svgSegmentPattern = @"<path fill=""{0}"" d=""M{1},{2} L{1},0 A{1},{1} 1 {3},1 {4},{5} L{6},{7} A{8},{8} 1 {3},0 {1},{2} z"" transform=""rotate({9}, {1}, {1})"" />"
+    let degree360 = 360.
+    let degree180 = 180.
+    let degree90 = 90.
 
-    static let SegmentsSourceProperty = BindableProperty.Create("SegmentsSource", typeof<seq<SegmentInfo>>, typeof<PieChartView>, null)
-    static let SeparatorPercentageProperty = BindableProperty.Create("SeparatorPercentage", typeof<float>, typeof<PieChartView>, 0.005)
-    static let CenterCirclePercentageProperty = BindableProperty.Create("CenterCirclePercentage", typeof<float>, typeof<PieChartView>, 0.5)
-    static let SeparatorColorProperty = BindableProperty.Create("SeparatorColor", typeof<Color>, typeof<PieChartView>, Color.White)
-
-    let mutable lastDrawableSize : int = 0 
-
-    let BuildColorPart(part : float) : int =
+    let BuildColorPart(part: float): int =
         int(part * 255.)
 
-    let GetHexColor(color : Color) : string =
+    let GetHexColor(color: Color): string =
         let red =  BuildColorPart color.R
         let green = BuildColorPart color.G
         let blue = BuildColorPart color.B
         let alpha = BuildColorPart color.A
         String.Format("{0:X2}{1:X2}{2:X2}{3:X2}", alpha, red, green, blue)
-       
-    member this.SegmentsSource
-        with get () = this.GetValue SegmentsSourceProperty :?> seq<SegmentInfo>
-        and set (value:seq<SegmentInfo>) = this.SetValue(SegmentsSourceProperty, value)
 
-    member this.SeparatorPercentage
-        with get () = this.GetValue SeparatorPercentageProperty :?> float
-        and set (value:float) = this.SetValue(SeparatorPercentageProperty, value)
+    let GetArcCoordinates radius angle shift =
+        let angleCalculated = 
+            if angle > degree180 then 
+                degree360 - angle 
+            else 
+                angle
 
-    member this.CenterCirclePercentage
-        with get () = this.GetValue CenterCirclePercentageProperty :?> float
-        and set (value:float) = this.SetValue(CenterCirclePercentageProperty, value)
+        let angleRad = angleCalculated * Math.PI / degree180
 
-    member this.SeparatorColor
-        with get () = this.GetValue SeparatorColorProperty :?> Color
-        and set (value:Color) = this.SetValue(SeparatorColorProperty, value)
+        let perpendicularDistance = 
+            if angleCalculated > degree90 then 
+                float(radius) * Math.Sin((degree180 - angleCalculated) * Math.PI / degree180) 
+            else 
+                float(radius) * Math.Sin(angleRad)
 
-    member this.Draw (checkLastDrawSize : bool) =
-        let width = if base.WidthRequest > 0. then base.WidthRequest else base.Width
-        let height = if base.HeightRequest > 0. then base.HeightRequest else base.Height
-        
-        if width <= 0. || 
-            height <= 0. || 
-            this.SegmentsSource = null || 
-            not(this.SegmentsSource.Any()) 
-        then
-             () // exit
-            
-        else
+        let topPointDistance =
+            Math.Sqrt(float(2 * radius * radius) - (float (2 * radius * radius) * Math.Cos(angleRad)))
+        let arcEndY = Math.Sqrt(topPointDistance * topPointDistance - perpendicularDistance * perpendicularDistance)
+        let arcEndX = 
+            if angle > degree180 then 
+                float(radius) - perpendicularDistance 
+            else 
+                float(radius) + perpendicularDistance
 
-        let halfSize = (int(Math.Min(width, height))) / 2
-        if checkLastDrawSize && Math.Abs(lastDrawableSize - halfSize) <= 0 
-        then
-            () // exit
+        arcEndX + shift, arcEndY + shift
 
-        else
+    let CollectSegment color startX startY radius innerRadius angle rotation (segmentsBuilder: StringBuilder) =
+        let bigArcEndX, bigArcEndY = GetArcCoordinates radius angle 0.
+        let shift = float(radius - innerRadius)
+        let smallArcEndX, smallArcEndY = GetArcCoordinates innerRadius angle shift
 
-        lastDrawableSize <- halfSize
+        let obtuseAngleFlag = 
+            if angle > degree180 then
+                1 
+            else 
+                0
 
-        let itemsCount = this.SegmentsSource.Count()
-        let totalPercentage = if itemsCount > 1 then 1. - float(itemsCount) * this.SeparatorPercentage else 1.
-        
-        let segmentsToDraw = List<SegmentInfo>()
-        for item in this.SegmentsSource do
-            segmentsToDraw.Add { SegmentInfo.Color=this.SeparatorColor; Percentage=this.SeparatorPercentage }
-            segmentsToDraw.Add { SegmentInfo.Color=item.Color; Percentage=item.Percentage * totalPercentage }
+        segmentsBuilder.AppendLine(
+            String.Format(svgSegmentPattern, 
+                          color, 
+                          startX, 
+                          startY, 
+                          obtuseAngleFlag, 
+                          bigArcEndX, 
+                          bigArcEndY, 
+                          smallArcEndX, 
+                          smallArcEndY, 
+                          innerRadius, 
+                          rotation)
+        ) |> ignore
 
-        let mutable rotation = 0.
-        let segmentsBuilder = StringBuilder();
-        
-        for item in segmentsToDraw do 
-            let angle = Degree360 * item.Percentage
-            let angleCalculated = if angle > Degree180 then Degree360 - angle else angle
-            let angleRad = angleCalculated * Math.PI / Degree180
-            let perpendicularDistance = if angleCalculated > Degree90 then float(halfSize) * Math.Sin((Degree180 - angleCalculated) * Math.PI / Degree180) else float(halfSize) * Math.Sin(angleRad)
-            let topPointDistance = Math.Sqrt(float(2 * halfSize * halfSize) - (float (2 * halfSize * halfSize) * Math.Cos(angleRad)))
-            let y1 = Math.Sqrt(topPointDistance * topPointDistance - perpendicularDistance * perpendicularDistance)
-            let x1 = if angle > Degree180 then float(halfSize) - perpendicularDistance else float(halfSize) + perpendicularDistance;
-            let obtuseAngleFlag = if angle > Degree180 then 1 else 0
-            segmentsBuilder.AppendLine(String.Format(SvgSegmentPatter, halfSize, x1, y1, rotation, obtuseAngleFlag, GetHexColor(item.Color))) |> ignore
-            rotation <- rotation + angle
+    let rec PrepareSegmentsSvgBuilder segmentsToDraw rotation startY radius innerRadius (segmentsBuilder: StringBuilder) =
+        match segmentsToDraw with 
+        | [] -> 
             ()
+        | item::tail -> 
+            let angle = degree360 * item.Percentage
+            if item.Color.A > 0. then
+                let color = GetHexColor(item.Color)
+                let startX = radius
 
+                if angle >= 360. then
+                    CollectSegment color startX startY radius innerRadius 180. rotation segmentsBuilder
+                    CollectSegment color startX startY radius innerRadius 180. 180. segmentsBuilder
+                else
+                    CollectSegment color startX startY radius innerRadius angle rotation segmentsBuilder
 
-        let centerCiclerSvg = String.Format(SvgCenterCircle, halfSize, float(halfSize) * this.CenterCirclePercentage, GetHexColor(this.SeparatorColor))
-        let fullSvg = String.Format(SvgMainImagePattern, halfSize * 2, segmentsBuilder, centerCiclerSvg);
-        let svgHolder = SkiaSharp.Extended.Svg.SKSvg();
+            let newRotation = rotation + angle
+            PrepareSegmentsSvgBuilder tail newRotation startY radius innerRadius segmentsBuilder
 
-        use stream = new MemoryStream(Encoding.UTF8.GetBytes(fullSvg))
-        svgHolder.Load(stream) |> ignore
+    static let segmentsSourceName = "SegmentsSource"
+    static let segmentsSourceProperty =
+        BindableProperty.Create(segmentsSourceName,
+                                typeof<seq<SegmentInfo>>, typeof<DonutChartView>, null)
+    static let separatorPercentageName = "SeparatorPercentage"
+    static let separatorPercentageProperty =
+        BindableProperty.Create(separatorPercentageName,
+                                typeof<float>, typeof<DonutChartView>, 0.)
+    static let centerCirclePercentageName = "CenterCirclePercentage"
+    static let centerCirclePercentageProperty =
+        BindableProperty.Create(centerCirclePercentageName,
+                                typeof<float>, typeof<DonutChartView>, 0.5)
+    static let separatorColorName = "SeparatorColor"
+    static let separatorColorProperty =
+        BindableProperty.Create(separatorColorName,
+                                typeof<Color>, typeof<DonutChartView>, Color.Transparent)
+    static let defaultImageSourceName = "DefaultImageSource"
+    static let defaultImageSourceProperty =
+        BindableProperty.Create(defaultImageSourceName,
+                                typeof<ImageSource>, typeof<DonutChartView>, null)
 
-        let canvasSize = svgHolder.CanvasSize
-        let cullRect = svgHolder.Picture.CullRect
+    static member SegmentsSourceProperty = segmentsSourceProperty
+    static member SeparatorPercentageProperty = separatorPercentageProperty
+    static member CenterCirclePercentageProperty = centerCirclePercentageProperty
+    static member SeparatorColorProperty = separatorColorProperty
+    static member DefaultImageSourceProperty = defaultImageSourceProperty
 
-        use bitmap = new SKBitmap(int(canvasSize.Width), int(canvasSize.Height))       
-        use canvas = new SKCanvas(bitmap)
-        let canvasMin = Math.Min(canvasSize.Width, canvasSize.Height)
-        let svgMax = Math.Max(cullRect.Width, cullRect.Height)
-        let scale = canvasMin / svgMax
-        let matrix = SKMatrix.MakeScale(scale, scale)
-        canvas.Clear(SKColor.Empty)
-        canvas.DrawPicture(svgHolder.Picture, ref matrix)
-        canvas.Flush()
-        canvas.Save() |> ignore
-        use image = SKImage.FromBitmap(bitmap)
-        let data = image.Encode(SKEncodedImageFormat.Png, Int32.MaxValue)       
-        this.Source <- ImageSource.FromStream(fun _ -> data.AsStream())
-        ()
+    member self.SegmentsSource
+        with get () = self.GetValue segmentsSourceProperty :?> seq<SegmentInfo>
+        and set (value:seq<SegmentInfo>) = self.SetValue(segmentsSourceProperty, value)
 
-    override this.OnPropertyChanged(propertyName : string) =
-        if  propertyName = "Height" ||
-            propertyName = "Width" ||
-            propertyName = "WidthRequest" || 
-            propertyName = "HeightRequest" then this.Draw(true)
-        elif propertyName = "SegmentsSource" ||
-            propertyName = "SeparatorPercentage" ||
-            propertyName = "CenterCirclePercentage" || 
-            propertyName = "SeparatorColor" then this.Draw(false)
+    member self.SeparatorPercentage
+        with get () = self.GetValue separatorPercentageProperty :?> float
+        and set (value:float) = self.SetValue(separatorPercentageProperty, value)
+
+    member self.CenterCirclePercentage
+        with get () = self.GetValue centerCirclePercentageProperty :?> float
+        and set (value:float) = self.SetValue(centerCirclePercentageProperty, value)
+
+    member self.SeparatorColor
+        with get () = self.GetValue separatorColorProperty :?> Color
+        and set (value:Color) = self.SetValue(separatorColorProperty, value)
+
+    member self.DefaultImageSource
+        with get () = self.GetValue defaultImageSourceProperty :?> ImageSource
+        and set (value:ImageSource) = self.SetValue(defaultImageSourceProperty, value)
+
+    member self.Draw () =
+        let width = 
+            if base.WidthRequest > 0. then 
+                base.WidthRequest 
+            else 
+                base.Width
+        let height = 
+            if base.HeightRequest > 0. then
+                base.HeightRequest 
+            else 
+                base.Height
+
+        if width <= 0. || 
+           height <= 0. || 
+           self.SegmentsSource = null || 
+           not(self.SegmentsSource.Any()) then
+            ()
+        else
+
+            let size = int(Math.Floor(Math.Min(width, height)))
+            let halfSize =
+                if size / 2 % 2 = 0 then
+                    size / 2
+                else
+                    size / 2 - 1
+                    
+            let nonZeroItems = self.SegmentsSource.Where(fun s -> s.Percentage > 0.)
+            let itemsCount = nonZeroItems.Count()
+            if itemsCount = 0 then
+                self.Source <- self.DefaultImageSource
+            else
+                let separatorsTotalPercentage = 
+                    if itemsCount > 1 then 
+                        float(itemsCount) * self.SeparatorPercentage 
+                    else 
+                        0.
+
+                let segmentsTotalPercentage = 1. - separatorsTotalPercentage
+
+                let segmentsToDraw = 
+                    if itemsCount = 1 then
+                        let item = nonZeroItems.First()
+                        let segment = { 
+                            Color = item.Color
+                            Percentage = item.Percentage * segmentsTotalPercentage
+                        }
+                        [segment]
+                    else
+                        nonZeroItems
+                            |> Seq.map (fun i -> 
+                                   let separator = { 
+                                       Color = self.SeparatorColor
+                                       Percentage = self.SeparatorPercentage
+                                   } 
+                                   let segment = { 
+                                       Color = i.Color
+                                       Percentage = i.Percentage * segmentsTotalPercentage
+                                   }
+                                   [separator; segment]
+                                )
+                            |> List.concat
+
+                let innerRadius = int(float(halfSize) * self.CenterCirclePercentage)
+                let startY = int((1. - self.CenterCirclePercentage) * float(halfSize))
+                let segmentsBuilder = StringBuilder()
+                PrepareSegmentsSvgBuilder segmentsToDraw 0. startY halfSize innerRadius segmentsBuilder
+
+                let centerCiclerSvg = 
+                    if self.SeparatorColor.A > 0. then
+                        String.Format(svgCirclePattern,
+                                      halfSize,
+                                      float(halfSize) * self.CenterCirclePercentage,
+                                      GetHexColor self.SeparatorColor)
+                     else
+                         String.Empty
+
+                let fullSvg = String.Format(svgMainImagePattern, size, segmentsBuilder, centerCiclerSvg)
+                let svgHolder = SkiaSharp.Extended.Svg.SKSvg()
+
+                use stream = new MemoryStream(Encoding.UTF8.GetBytes fullSvg)
+                svgHolder.Load(stream) |> ignore
+
+                let canvasSize = svgHolder.CanvasSize
+                let cullRect = svgHolder.Picture.CullRect
+
+                use bitmap = new SKBitmap(int(canvasSize.Width), int(canvasSize.Height))       
+                use canvas = new SKCanvas(bitmap)
+                let canvasMin = Math.Min(canvasSize.Width, canvasSize.Height)
+                let svgMax = Math.Max(cullRect.Width, cullRect.Height)
+                let scale = canvasMin / svgMax
+                let matrix = SKMatrix.MakeScale(scale, scale)
+                canvas.Clear SKColor.Empty
+                canvas.DrawPicture(svgHolder.Picture, ref matrix)
+                canvas.Flush()
+                canvas.Save() |> ignore
+                use image = SKImage.FromBitmap bitmap
+                let data = image.Encode(SKEncodedImageFormat.Png, Int32.MaxValue)       
+                self.Source <- ImageSource.FromStream(fun _ -> data.AsStream())
+
+    override self.OnPropertyChanged(propertyName: string) =
+        base.OnPropertyChanged(propertyName)
+        if propertyName = "Height" ||
+           propertyName = "Width" ||
+           propertyName = "WidthRequest" || 
+           propertyName = "HeightRequest" || 
+           propertyName = segmentsSourceName ||
+           propertyName = separatorPercentageName ||
+           propertyName = centerCirclePercentageName ||
+           propertyName = separatorColorName then
+            self.Draw()
         ()

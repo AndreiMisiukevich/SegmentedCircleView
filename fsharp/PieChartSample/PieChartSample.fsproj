@@ -6,7 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="SegmentInfo.fs" />
     <Compile Include="PieChartView.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>

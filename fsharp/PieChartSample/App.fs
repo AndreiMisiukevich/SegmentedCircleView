@@ -5,8 +5,8 @@ open Xamarin.Forms
 type App() =
     inherit Application()
 
-    let BuildPieChart () : PieChartView =
-        let pieChart = PieChartView()
+    let BuildPieChart () =
+        let pieChart = DonutChartView()
         pieChart.HorizontalOptions <- LayoutOptions.CenterAndExpand
         pieChart.VerticalOptions <- LayoutOptions.CenterAndExpand
         pieChart.WidthRequest <- 230.
@@ -16,10 +16,11 @@ type App() =
     do
         let pieChart = BuildPieChart()
 
-        pieChart.SegmentsSource <- [ { SegmentInfo.Color=Color.Brown; Percentage=0.125 };
+        pieChart.SegmentsSource <- [ { SegmentInfo.Color=Color.Brown; Percentage=0.6 };
         { SegmentInfo.Color=Color.Red; Percentage=0.2 };
-        { SegmentInfo.Color=Color.Gold; Percentage=0.075 };
-        { SegmentInfo.Color=Color.Black; Percentage=0.6 }]
+        { SegmentInfo.Color=Color.Gold; Percentage=0.1 };
+        { SegmentInfo.Color=Color.Black; Percentage=0.1 }
+        ]
         
         let stack = StackLayout()
         stack.BackgroundColor <- Color.White
